@@ -1,0 +1,53 @@
+---
+- hosts: localhost,
+  connection: local
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+    - name: Install required packages
+      package:
+        name:
+          - nginx
+          - unzip 
+        state: present
+
+    # Download the latest cyberchef.
+
+    - uri:                                                               
+        url: https://api.github.com/repos/gchq/CyberChef/releases/latest 
+        return_content: true                                             
+      register: cyberchef                                            
+
+    - name: Create Directory 
+      file:
+        path: "/var/www/html/{{ cyberchef.json.tag_name }}"
+        state: directory 
+
+    - get_url:                                                           
+        url: "{{ cyberchef.json.assets.0.browser_download_url }}"                       
+        dest: /tmp/cyberchef-latest.zip  
+ 
+    - name: 
+      unarchive:
+        src: /tmp/cyberchef-latest.zip
+        dest: "/var/www/html/{{ cyberchef.json.tag_name }}" 
+
+    - name: create symlink to index.htnl 
+      file:
+        src: "/var/www/html/{{ cyberchef.json.tag_name }}/CyberChef_{{ cyberchef.json.tag_name}}.html"
+        dest: "/var/www/html/{{ cyberchef.json.tag_name }}/index.html"
+        state: link 
+
+    - name: Copy nginx configuration
+      template:
+        src: default
+        dest: /etc/nginx/sites-available/default
+      notify: restart nginx
+
+  handlers:
+    - name: restart nginx 
+      service:
+        name: nginx 
+        state: restarted
