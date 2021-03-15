@@ -1,44 +1,64 @@
 ---
 - hosts: localhost,
   connection: local
-  gather_facts: no
   become: yes
 
   tasks:
+
+    - block:
+       - name: "Message"
+         debug:
+           msg: "Not in a LXC container, ending play."
+
+       - meta: end_play
+      when: ansible_virtualization_type != 'lxc'
 
     - name: Install required packages
       package:
         name:
           - nginx
-          - unzip 
+          - unzip
         state: present
 
     # Download the latest cyberchef.
 
-    - uri:                                                               
-        url: https://api.github.com/repos/gchq/CyberChef/releases/latest 
-        return_content: true                                             
-      register: cyberchef                                            
+    - uri:
+        url: https://api.github.com/repos/gchq/CyberChef/releases/latest
+        return_content: true
+      register: cyberchef
 
-    - name: Create Directory 
+    - name: Preform a file stat on the index file.
+      stat:
+        path: "/var/www/html/{{ cyberchef.json.tag_name }}/CyberChef_{{ cyberchef.json.tag_name}}.html"
+      register: cyberchef_index_file
+
+    - block:
+       - name: "Message"
+         debug:
+           msg: "Already at latest version ({{ cyberchef.json.tag_name}}), nothing to do."
+
+       - meta: end_play
+      when: cyberchef_index_file.stat.exists
+
+    - name: Create Directory
       file:
         path: "/var/www/html/{{ cyberchef.json.tag_name }}"
-        state: directory 
+        state: directory
 
-    - get_url:                                                           
-        url: "{{ cyberchef.json.assets.0.browser_download_url }}"                       
-        dest: /tmp/cyberchef-latest.zip  
- 
-    - name: 
+    - get_url:
+        url: "{{ cyberchef.json.assets.0.browser_download_url }}"
+        dest: /tmp/cyberchef-latest.zip
+
+    - name:
       unarchive:
         src: /tmp/cyberchef-latest.zip
-        dest: "/var/www/html/{{ cyberchef.json.tag_name }}" 
+        dest: "/var/www/html/{{ cyberchef.json.tag_name }}"
 
-    - name: create symlink to index.htnl 
+    - name: create symlink to index.htnl
       file:
         src: "/var/www/html/{{ cyberchef.json.tag_name }}/CyberChef_{{ cyberchef.json.tag_name}}.html"
         dest: "/var/www/html/{{ cyberchef.json.tag_name }}/index.html"
-        state: link 
+        state: link
 
     - name: Copy nginx configuration
       template:
@@ -47,7 +67,7 @@
       notify: restart nginx
 
   handlers:
-    - name: restart nginx 
+    - name: restart nginx
       service:
-        name: nginx 
+        name: nginx
         state: restarted
